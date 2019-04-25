@@ -102,7 +102,7 @@ Como se puede observar, el Hoeffding adaptativo (en color rojo) sigue una distri
 
 En un flujo que no tiene cambios de concepto es asumible pensar que el algoritmo estacionario se mantenga estable y funcione mejor de forma general a lo largo del tiempo que un modelo adaptativo que puede estar aprendiendo cosas erróneas con los distintos momentos del flujo.
 
-## Ejercicio 2
+## Ejercicio 2: Entrenamiento online.
 
 ### Entrenar un clasificador HoeffdingTree online, mediante el método Interleaved Test-Then-Train, sobre un total de 1.000.000 de instancias procedentes de un flujo obtenido por el generador WaveFormGenerator con semilla aleatoria igual a 2, con una frecuencia de muestreo igual a 10.000. Pruebe con otras semillas aleatorias para crear una población de resultados. Anotar los valores de porcentajes de aciertos en la clasificación y estadístico Kappa.
 
@@ -180,3 +180,94 @@ t.test(hoeffdingEst2$accuracy, hoeffdingAd2$accuracy)
 ```
 
 Los dos clasificadores parecen comportarse igual según el test T de Student. Esto quiere decir que la diferencia entre sus medias no es suficientemente significativa. Tiene sentido dado que cuando es un aprendizaje online los datos que le van llegando al clasificador adaptativo ahora sí facilitan su aprendizaje y puede decidir mejor qué partes de su modelo son mejores. El modelo estacionario se mantiene en los mismos baremos que obtenía en el ejercicio anterior, igualando sus resultados con el modelo adaptativo, cuando antes era el que mejor clasificaba.
+
+## Ejercicio 3: Entrenamiento online en datos con concept drift.
+
+### Entrenar un clasificador HoeffdingTree online, mediante el método Interleaved Test-Then-Train, sobre un total de 2.000.000 de instancias muestreadas con una frecuencia de 100.000, sobre datos procedentes de un generador de flujos RandomRBFGeneratorDrift, con semilla aleatorio igual a 1 para generación de modelos y de instancias, generando 2 clases, 7 atributos, 3 centroides en el modelo, drift en todos los centroides y velocidad de cambio igual a 0.001. Pruebe con otras semillas aleatorias. Anotar los valores de porcentajes de aciertos en la clasificación y estadístico Kappa. Compruebe la evolución de la curva de aciertos en la GUI de MOA.
+
+Así se genera el ejemplo que pide el enunciado.
+
+```
+EvaluateInterleavedTestThenTrain -l trees.HoeffdingTree -s \
+(generators.RandomRBFGeneratorDrift -r 1 -i 1 -c 2 -a 7 -n 3 -s 0.001 -k 3) -i 1000000 -f 100000
+```
+
+Se genera una población con 30 ejecuciones con distintas semillas. Voy a mostrar solo una gráfica representativa de cómo se comporta este algoritmo para no llenar el PDF de gráficas similares.
+
+```{r}
+accuracy = array(dim = 30)
+kappa = array(dim = 30)
+for (i in 1:30) {
+  archivo =
+    paste(c(paste(c("./Datos/Ejercicio3.1/hoeffdingEstacionario",i),collapse = ""),".csv"),collapse="")
+  datos = read.csv(archivo)
+  accuracyFinal =
+    datos$classifications.correct..percent.[length(datos$classifications.correct..percent.)]
+  accuracy[i] = accuracyFinal
+  kappaFinal =
+    datos$Kappa.Statistic..percent.[length(datos$Kappa.Statistic..percent.)]
+  kappa[i] = kappaFinal
+  
+  if (i == 1) {
+    plot(datos$learning.evaluation.instances,
+     datos$classifications.correct..percent.,
+     "l", ylim = c(0,100), col = "blue")
+  }
+}
+
+hoeffdingEst3 = as.data.frame(cbind(accuracy, kappa))
+hoeffdingEst3
+```
+
+### Repetir el paso anterior, sustituyendo el clasificador por HoeffdingTree adaptativo.
+
+Una ejecución del algoritmo se lanzaría con el siguiente comando.
+
+```
+EvaluateInterleavedTestThenTrain -l trees.HoeffdingAdaptiveTree -s \
+(generators.RandomRBFGeneratorDrift -r 1 -i 1 -c 2 -a 7 -n 3 -s 0.001 -k 3) -i 1000000 -f 100000
+```
+
+De nuevo generamos otra población con 30 de estas ejecuciones.
+
+```{r}
+accuracy = array(dim = 30)
+kappa = array(dim = 30)
+for (i in 1:30) {
+  archivo =
+    paste(c(paste(c("./Datos/Ejercicio3.2/hoeffdingAdaptativo",i),collapse = ""),".csv"),collapse="")
+  datos = read.csv(archivo)
+  accuracyFinal =
+    datos$classifications.correct..percent.[length(datos$classifications.correct..percent.)]
+  accuracy[i] = accuracyFinal
+  kappaFinal =
+    datos$Kappa.Statistic..percent.[length(datos$Kappa.Statistic..percent.)]
+  kappa[i] = kappaFinal
+  
+  if (i == 1) {
+    plot(datos$learning.evaluation.instances,
+     datos$classifications.correct..percent.,
+     "l", ylim = c(0,100), col = "red")
+  }
+}
+
+hoeffdingAd3 = as.data.frame(cbind(accuracy, kappa))
+hoeffdingAd3
+```
+
+### Responda a la pregunta: ¿Cree que algún clasificador es mejor que el otro en este tipo de problemas? Razone su respuesta.
+
+Vamos a probar con el test de Shapiro-Wilk si las distribuciones de los valores de accuracy son normales.
+
+```{r}
+shapiro.test(hoeffdingEst3$accuracy)
+shapiro.test(hoeffdingAd3$accuracy)
+```
+
+Ambas siguen una distribución normal en base al test de Shapiro-Wilk, por lo que podemos ejecutar el test T de Student para ver si la diferencia entre sus medias es significativa. En base a lo observado en las gráficas parece obvio que sí, pero lo hacemos por asegurarnos.
+
+```{r}
+t.test(hoeffdingEst3$accuracy, hoeffdingAd3$accuracy)
+```
+
+El p-value es muy pequeño dejando claro que existen diferencias significativas, como habíamos visto antes claramente a favor del algoritmo adaptativo. Al ocurrir cambios de concepto en el flujo de datos, el algoritmo adaptativo es capaz de mejorar su modelo desechando aquellas partes que no clasifiquen bien. El estacionario por su parte no aprende tan rápido y por tanto va decayendo su acierto a medida que se suceden los cambios de concepto.
