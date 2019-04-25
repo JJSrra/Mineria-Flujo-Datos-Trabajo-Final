@@ -1,0 +1,104 @@
+---
+title: 'Minería de Flujo de Datos: Trabajo Final'
+author: "Juanjo Sierra"
+date: "25 de abril de 2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Ejercicio 1: Entrenamiento offline (estacionario) y evaluación posterior.
+
+### Entrenar un clasificador HoeffdingTree offline (estacionario, aprender modelo únicamente), sobre un total de 1.000.000 de instancias procedentes de un flujo obtenido por el generador WaveFormGenerator con semilla aleatoria igual a 2. Evaluar posteriormente (sólo evaluación) con 1.000.000 de instancias generadas por el mismo tipo de generador, con semilla aleatoria igual a 4. Repita el proceso varias veces con la misma semilla en evaluación y diferentes semillas en entrenamiento, para crear una población de resultados. Anotar como resultados los valores de porcentajes de aciertos en la clasificación y estadístico Kappa.
+
+El modelo se entrena con el siguiente comando en la consola de MOA.
+
+```
+java -cp moa.jar -javaagent:sizeofag-1.0.0.jar moa.DoTask "EvaluateModel -m \
+(LearnModel -l trees.HoeffdingTree -s (generators.WaveformGenerator -i 1) -m \
+1000000) -s (generators.WaveformGenerator -i 4) -i 1000000"
+```
+
+Realizamos una población de tamaño 30 utilizando 30 semillas distintas para comprobar cómo se comporta este algoritmo en general. Almacenamos los datos de accuracy y Kappa para las 30 ejecuciones en un dataframe.
+
+```{r}
+accuracy = array(dim = 30)
+kappa = array(dim = 30)
+for (i in 1:30) {
+  archivo =
+    paste(c(paste(c("./Datos/Ejercicio1.1/hoeffdingEstacionario",i),
+                  collapse = ""),".csv"),collapse="")
+  con = file(archivo,open="r")
+  datos = readLines(con)
+  accuracyFinal =
+    as.double(gsub(",", ".", gsub(".* = ", "", datos[2])))
+  accuracy[i] = accuracyFinal
+  kappaFinal =
+    as.double(gsub(",", ".", gsub(".* = ", "", datos[3])))
+  kappa[i] = kappaFinal
+  close(con)
+}
+
+hoeffdingEst = as.data.frame(cbind(accuracy, kappa))
+hoeffdingEst
+```
+
+Ahí se pueden ver los valores que ha obtenido para accuracy y Kappa el modelo estacionario.
+
+### Repetir el paso anterior, sustituyendo el clasificador por HoeffdingTree adaptativo.
+
+Para ello utilizamos el mismo comando anterior pero sustituyendo `trees.HoeffdingTree` por `trees.HoeffdingAdaptiveTree`.
+De nuevo generamos una población de tamaño 30 mediante un script.
+
+```{r}
+accuracy = array(dim = 30)
+kappa = array(dim = 30)
+for (i in 1:30) {
+  archivo =
+    paste(c(paste(c("./Datos/Ejercicio1.2/hoeffdingAdaptativo",i),
+                  collapse = ""),".csv"),collapse="")
+  con = file(archivo,open="r")
+  datos = readLines(con)
+  accuracyFinal =
+    as.double(gsub(",", ".", gsub(".* = ", "", datos[2])))
+  accuracy[i] = accuracyFinal
+  kappaFinal =
+    as.double(gsub(",", ".", gsub(".* = ", "", datos[3])))
+  kappa[i] = kappaFinal
+  close(con)
+}
+
+hoeffdingAd = as.data.frame(cbind(accuracy, kappa))
+hoeffdingAd
+```
+
+### Responda a la pregunta: ¿Cree que algún clasificador es significativamente mejor que el otro en este tipo de problemas? Razone su respuesta.
+
+Para responder a esta pregunta de forma adecuada deberíamos evaluar la similitud de los resultados de ambos algoritmos en base a tests estadísticos. Para saber si utilizar tests paramétricos o no paramétricos comprobamos con el test de Shapiro-Wilk si los valores siguen una distribución normal.
+
+```{r}
+shapiro.test(hoeffdingEst$accuracy)
+shapiro.test(hoeffdingAd$accuracy)
+```
+
+Como el accuracy del modelo estacionario no sigue una distribución normal según el test, para comparar esta variable tendré que usar un test no paramétrico como Wilcoxon.
+
+```{r}
+wilcox.test(hoeffdingEst$accuracy, hoeffdingAd$accuracy, exact = FALSE, alternative = )
+```
+
+El test dice que hay diferencias significativas entre ambas poblaciones. Observemos los histogramas de los valores para entender qué está ocurriendo.
+
+```{r}
+hist(hoeffdingEst$accuracy, col="blue", prob=TRUE)
+lines(density(hoeffdingEst$accuracy))
+
+hist(hoeffdingAd$accuracy, col="red", prob=TRUE)
+lines(density(hoeffdingAd$accuracy))
+```
+
+Como se puede observar, el Hoeffding adaptativo (en color rojo) sigue una distribución más normal que el estacionario (en color azul). El estacionario no ha sido clasificado como distribución normal debido a la oblicuidad hacia la derecha que sufre. Además, comprobamos que la gran mayoría de los resultados que obtiene el estacionario están a la derecha de 84.4, por lo que se entiende que salga elegido por Wilcoxon como el mejor algoritmo.
+
+En un flujo que no tiene cambios de concepto es asumible pensar que el algoritmo estacionario se mantenga estable y funcione mejor de forma general a lo largo del tiempo que un modelo adaptativo que puede estar aprendiendo cosas erróneas con los distintos momentos del flujo.
